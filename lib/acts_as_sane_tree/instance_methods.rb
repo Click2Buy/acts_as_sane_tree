@@ -32,6 +32,37 @@ module ActsAsSaneTree
       end
     end
 
+    # Returns the node and all its ancestors
+    def self_and_ancestors
+      query =
+        "(WITH RECURSIVE crumbs AS (
+          SELECT #{self.class.configuration[:class].table_name}.*,
+          1 AS depth
+          FROM #{self.class.configuration[:class].table_name}
+          WHERE id = #{id}
+          UNION ALL
+          SELECT alias1.*,
+          depth + 1
+          FROM crumbs
+          JOIN #{self.class.configuration[:class].table_name} alias1 ON alias1.id = crumbs.parent_id
+        ) SELECT * FROM crumbs) as #{self.class.configuration[:class].table_name}"
+      scope_strip_method = self.class.configuration[:class].methods.map(&:to_sym).include?(:unscoped) ? :unscoped : :with_exclusive_scope
+      if(self.class.rails_arel?)
+        self.class.configuration[:class].send(scope_strip_method) do
+          self.class.configuration[:class].from(
+            query
+          ).order("#{self.class.configuration[:class].table_name}.depth DESC")
+        end
+      else
+        self.class.configuration[:class].send(scope_strip_method) do
+          self.class.configuration[:class].scoped(
+            :from => query,
+            :order => "#{self.class.configuration[:class].table_name}.depth DESC"
+          )
+        end
+      end
+    end
+
     # Returns the root node of the tree.
     def root
       ancestors.first
@@ -56,30 +87,61 @@ module ActsAsSaneTree
       parent_id.nil?
     end
 
-    # Returns all descendants of the current node. Each level
-    # is within its own hash, so for a structure like:
-    #   root
-    #    \_ child1
-    #         \_ subchild1
-    #               \_ subsubchild1
-    #         \_ subchild2
-    # the resulting hash would look like:
-    #
-    #  {child1 =>
-    #    {subchild1 =>
-    #      {subsubchild1 => {}},
-    #     subchild2 => {}}}
-    #
-    # This method will accept two parameters.
-    #   * :raw -> Result is scope that can more finders can be chained against with additional 'level' attribute
-    #   * {:depth => n} -> Will only search for descendants to the given depth of n
-    # NOTE: You can restrict results by depth on the scope returned, but better performance will be
-    # gained by specifying it within the args so it will be applied during the recursion, not after.
-    def descendants(*args)
-      args.delete_if{|x| !x.is_a?(Hash) && x != :raw}
-      self.class.configuration[:class].nodes_and_descendants(:no_self, self, *args)
+    # Returns all descendants of the current node
+    # Note: results are unsorted
+    def descendants
+      query =
+        "(WITH RECURSIVE crumbs AS (
+          SELECT #{self.class.configuration[:class].table_name}.*,
+          1 AS depth
+          FROM #{self.class.configuration[:class].table_name}
+          WHERE parent_id = #{id}
+          UNION ALL
+          SELECT alias1.*,
+          depth + 1
+          FROM crumbs
+          JOIN #{self.class.configuration[:class].table_name} alias1 ON alias1.parent_id = crumbs.id
+        ) SELECT * FROM crumbs) as #{self.class.configuration[:class].table_name}"
+      scope_strip_method = self.class.configuration[:class].methods.map(&:to_sym).include?(:unscoped) ? :unscoped : :with_exclusive_scope
+      if(self.class.rails_arel?)
+        self.class.configuration[:class].send(scope_strip_method) do
+          self.class.configuration[:class].from(query)
+        end
+      else
+        self.class.configuration[:class].send(scope_strip_method) do
+          self.class.configuration[:class].scoped(:from => query)
+        end
+      end
     end
     alias_method :descendents, :descendants
+
+    # Returns the node and all its descendants
+    # Note: results are unsorted
+    def self_and_descendants
+      query =
+        "(WITH RECURSIVE crumbs AS (
+          SELECT #{self.class.configuration[:class].table_name}.*,
+          1 AS depth
+          FROM #{self.class.configuration[:class].table_name}
+          WHERE id = #{id}
+          UNION ALL
+          SELECT alias1.*,
+          depth + 1
+          FROM crumbs
+          JOIN #{self.class.configuration[:class].table_name} alias1 ON alias1.parent_id = crumbs.id
+        ) SELECT * FROM crumbs) as #{self.class.configuration[:class].table_name}"
+      scope_strip_method = self.class.configuration[:class].methods.map(&:to_sym).include?(:unscoped) ? :unscoped : :with_exclusive_scope
+      if(self.class.rails_arel?)
+        self.class.configuration[:class].send(scope_strip_method) do
+          self.class.configuration[:class].from(query)
+        end
+      else
+        self.class.configuration[:class].send(scope_strip_method) do
+          self.class.configuration[:class].scoped(:from => query)
+        end
+      end
+    end
+    alias_method :self_and_descendents, :self_and_descendants
 
     # Returns the depth of the current node. 0 depth represents the root of the tree
     def depth
@@ -94,6 +156,11 @@ module ActsAsSaneTree
           JOIN #{self.class.configuration[:class].table_name} alias1 ON alias1.id = crumbs.parent_id
         ) SELECT level FROM crumbs ORDER BY level DESC LIMIT 1"
       ActiveRecord::Base.connection.select_all(query).first.try(:[], 'level').try(:to_i)
+    end
+
+    # Check if the node has no children
+    def leaf?
+      children.empty?
     end
   end
 end
