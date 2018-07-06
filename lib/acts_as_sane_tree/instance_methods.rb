@@ -91,6 +91,16 @@ module ActsAsSaneTree
       parent_id.nil?
     end
 
+    # Check if the node is a child node (i.e. it has a parent)
+    def child?
+      !root?
+    end
+
+    # Check if the node has no children
+    def leaf?
+      children.empty?
+    end
+
     # Returns all descendants of the current node
     # Note: results are unsorted
     def descendants
@@ -160,11 +170,6 @@ module ActsAsSaneTree
           JOIN #{self.class.configuration[:class].table_name} alias1 ON alias1.id = crumbs.parent_id
         ) SELECT level FROM crumbs ORDER BY level DESC LIMIT 1"
       ActiveRecord::Base.connection.select_all(query).first.try(:[], 'level').try(:to_i)
-    end
-
-    # Check if the node has no children
-    def leaf?
-      children.empty?
     end
   end
 end
