@@ -65,7 +65,11 @@ module ActsAsSaneTree
 
     # Returns the root node of the tree.
     def root
-      ancestors.first
+      if !parent_id
+        self
+      else
+        ancestors.first
+      end
     end
 
     # Returns all siblings of the current node.
