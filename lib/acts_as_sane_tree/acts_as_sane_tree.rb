@@ -67,6 +67,7 @@ module ActsAsSaneTree
             :dependent => @configuration[:dependent]
         end
         belongs_to :parent,
+          :optional => true,
           :class_name => @configuration[:class].name,
           :foreign_key => @configuration[:foreign_key]
         if(@configuration[:parent_override])
